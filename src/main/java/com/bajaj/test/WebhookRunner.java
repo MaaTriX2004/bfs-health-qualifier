@@ -30,17 +30,36 @@ public class WebhookRunner implements CommandLineRunner {
     // 6. We use SUBSTRING_INDEX to keep only the first 10 names.
     // 7. We ORDER BY Department ID Descending.
     // ==================================================================================
-    private static final String SQL_SOLUTION_Q2 = 
-        "SELECT " +
-        "    d.DEPARTMENT_NAME, " +
-        "    AVG(TIMESTAMPDIFF(YEAR, e.DOB, CURDATE())) AS AVERAGE_AGE, " +
-        "    SUBSTRING_INDEX(GROUP_CONCAT(DISTINCT CONCAT(e.FIRST_NAME, ' ', e.LAST_NAME) ORDER BY e.FIRST_NAME, e.LAST_NAME SEPARATOR ', '), ', ', 10) AS EMPLOYEE_LIST " +
-        "FROM DEPARTMENT d " +
-        "JOIN EMPLOYEE e ON d.DEPARTMENT_ID = e.DEPARTMENT " +
-        "JOIN PAYMENTS p ON e.EMP_ID = p.EMP_ID " +
-        "WHERE p.AMOUNT > 70000 " +
-        "GROUP BY d.DEPARTMENT_ID, d.DEPARTMENT_NAME " +
-        "ORDER BY d.DEPARTMENT_ID DESC;";
+// ==================================================================================
+    // NEW SQL SOLUTION (Highest Salary per Dept, Excluding Payments on 1st of Month)
+    // ==================================================================================
+    private static final String SQL_SOLUTION= 
+        "WITH EmpStats AS (" +
+        "    SELECT " +
+        "        e.DEPARTMENT, " +
+        "        e.FIRST_NAME, " +
+        "        e.LAST_NAME, " +
+        "        e.DOB, " +
+        "        SUM(p.AMOUNT) as TOTAL_SALARY " +
+        "    FROM EMPLOYEE e " +
+        "    JOIN PAYMENTS p ON e.EMP_ID = p.EMP_ID " +
+        "    WHERE DAY(p.PAYMENT_TIME) <> 1 " + // Exclude payments on Day 1
+        "    GROUP BY e.EMP_ID, e.DEPARTMENT, e.FIRST_NAME, e.LAST_NAME, e.DOB " +
+        "), " +
+        "Ranked AS (" +
+        "    SELECT " +
+        "        d.DEPARTMENT_NAME, " +
+        "        es.TOTAL_SALARY, " +
+        "        CONCAT(es.FIRST_NAME, ' ', es.LAST_NAME) as EMPLOYEE_NAME, " +
+        "        TIMESTAMPDIFF(YEAR, es.DOB, CURDATE()) as AGE, " +
+        "        ROW_NUMBER() OVER(PARTITION BY es.DEPARTMENT ORDER BY es.TOTAL_SALARY DESC) as rn " +
+        "    FROM EmpStats es " +
+        "    JOIN DEPARTMENT d ON es.DEPARTMENT = d.DEPARTMENT_ID " +
+        ") " +
+        "SELECT DEPARTMENT_NAME, TOTAL_SALARY as SALARY, EMPLOYEE_NAME, AGE " +
+        "FROM Ranked " +
+        "WHERE rn = 1 " +
+        "ORDER BY DEPARTMENT_NAME;";
 
     @Override
     public void run(String... args) throws Exception {
@@ -89,7 +108,7 @@ public class WebhookRunner implements CommandLineRunner {
             submitHeaders.set("Authorization", accessToken); 
 
             Map<String, String> submitBody = new HashMap<>();
-            submitBody.put("finalQuery", SQL_SOLUTION_Q2);
+            submitBody.put("finalQuery", SQL_SOLUTION);
 
             HttpEntity<Map<String, String>> submitRequest = new HttpEntity<>(submitBody, submitHeaders);
 
